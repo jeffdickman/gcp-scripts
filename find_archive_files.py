@@ -16,7 +16,7 @@ class ArchiveFileFinder:
         self.output_file = output_file or f"archive_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         self.errors_file = f"permission_errors_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         self.skipped_bucket = "gs://angels-bbops-video-dr/"
-        self.archive_types = ['.zip', '.tar', '.gz']
+        self.archive_types = ['.zip', '.tar', '.tar.gz', '.gz']
         
     def check_auth(self) -> bool:
         """Check if user is authenticated with gcloud."""
@@ -95,15 +95,23 @@ class ArchiveFileFinder:
         for ext in self.archive_types:
             try:
                 search_pattern = f"{bucket_url}*{ext}"
+                print(f"    Searching with pattern: {search_pattern}")
                 files, success = self.run_gcloud_command(["gsutil", "ls", "-r", search_pattern])
-                if success and files:
+                if not success:
+                    print(f"    Error searching for {ext} files: {files}")
+                    continue
+                if files:
+                    print(f"    Found {len(files.split('\n'))} {ext} files")
                     for file_path in files.split('\n'):
                         if file_path:
                             results.append({
                                 'file_type': ext[1:],  # Remove the dot
                                 'file_path': file_path
                             })
-            except subprocess.CalledProcessError:
+                else:
+                    print(f"    No {ext} files found")
+            except subprocess.CalledProcessError as e:
+                print(f"    Error searching for {ext} files: {str(e)}")
                 continue
         return results
 
