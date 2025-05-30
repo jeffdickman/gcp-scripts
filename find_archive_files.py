@@ -81,8 +81,13 @@ class ArchiveFileFinder:
             if not success:
                 return [], False
 
-            return [b for b in buckets.split('\n') if b and b.endswith('/')], True
-        except Exception:
+            bucket_list = [b for b in buckets.split('\n') if b and b.endswith('/')]
+            print(f"  Found {len(bucket_list)} buckets in project {project_id}")
+            for bucket in bucket_list:
+                print(f"    Bucket: {bucket}")
+            return bucket_list, True
+        except Exception as e:
+            print(f"  Error getting buckets for project {project_id}: {str(e)}")
             return [], False
 
     def search_bucket(self, bucket_url: str) -> List[Dict[str, str]]:
@@ -92,24 +97,47 @@ class ArchiveFileFinder:
             return []
 
         results = []
+        # First try a broad search to see what files exist
+        try:
+            print(f"    Listing all files in bucket: {bucket_url}")
+            all_files, success = self.run_gcloud_command(["gsutil", "ls", "-r", f"{bucket_url}**"])
+            if success and all_files:
+                print(f"    Found {len(all_files.split('\n'))} total files in bucket")
+                # Print first few files for debugging
+                for file in all_files.split('\n')[:5]:
+                    if file:
+                        print(f"    Sample file: {file}")
+            else:
+                print(f"    No files found in bucket or error listing files")
+        except Exception as e:
+            print(f"    Error listing files: {str(e)}")
+
+        # Now search for specific file types
         for ext in self.archive_types:
             try:
-                search_pattern = f"{bucket_url}*{ext}"
-                print(f"    Searching with pattern: {search_pattern}")
-                files, success = self.run_gcloud_command(["gsutil", "ls", "-r", search_pattern])
-                if not success:
-                    print(f"    Error searching for {ext} files: {files}")
-                    continue
-                if files:
-                    print(f"    Found {len(files.split('\n'))} {ext} files")
-                    for file_path in files.split('\n'):
-                        if file_path:
-                            results.append({
-                                'file_type': ext[1:],  # Remove the dot
-                                'file_path': file_path
-                            })
-                else:
-                    print(f"    No {ext} files found")
+                # Try different search patterns
+                patterns = [
+                    f"{bucket_url}**{ext}",  # Original pattern
+                    f"{bucket_url}*{ext}",   # Simple pattern
+                    f"{bucket_url}**/*{ext}" # Alternative pattern
+                ]
+                
+                for pattern in patterns:
+                    print(f"    Trying pattern: {pattern}")
+                    files, success = self.run_gcloud_command(["gsutil", "ls", "-r", pattern])
+                    if not success:
+                        print(f"    Error with pattern {pattern}: {files}")
+                        continue
+                    if files:
+                        print(f"    Found {len(files.split('\n'))} {ext} files with pattern {pattern}")
+                        for file_path in files.split('\n'):
+                            if file_path:
+                                results.append({
+                                    'file_type': ext[1:],  # Remove the dot
+                                    'file_path': file_path
+                                })
+                    else:
+                        print(f"    No {ext} files found with pattern {pattern}")
             except subprocess.CalledProcessError as e:
                 print(f"    Error searching for {ext} files: {str(e)}")
                 continue
