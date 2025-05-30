@@ -96,19 +96,45 @@ class ArchiveFileFinder:
             print(f"Skipping bucket: {bucket_url}")
             return []
 
+        # Special handling for the known bucket
+        is_known_bucket = "bkt-prj-b-seed-tfstate-b052" in bucket_url
+        if is_known_bucket:
+            print(f"\nDEBUG: Found known bucket: {bucket_url}")
+            print("Attempting to list all files in this bucket...")
+            
+            # First try a simple ls to see what's in the root
+            try:
+                root_files, success = self.run_gcloud_command(["gsutil", "ls", bucket_url])
+                if success and root_files:
+                    print("Files in root directory:")
+                    for file in root_files.split('\n'):
+                        if file:
+                            print(f"  {file}")
+            except Exception as e:
+                print(f"Error listing root files: {str(e)}")
+
         results = []
         # First try a broad search to see what files exist
         try:
             print(f"    Listing all files in bucket: {bucket_url}")
-            all_files, success = self.run_gcloud_command(["gsutil", "ls", "-r", f"{bucket_url}**"])
-            if success and all_files:
-                print(f"    Found {len(all_files.split('\n'))} total files in bucket")
-                # Print first few files for debugging
-                for file in all_files.split('\n')[:5]:
-                    if file:
-                        print(f"    Sample file: {file}")
-            else:
-                print(f"    No files found in bucket or error listing files")
+            # Try different patterns for the broad search
+            broad_patterns = [
+                f"{bucket_url}**",  # Original pattern
+                f"{bucket_url}*",   # Simple pattern
+                f"{bucket_url}**/*" # Alternative pattern
+            ]
+            
+            for pattern in broad_patterns:
+                print(f"    Trying broad pattern: {pattern}")
+                all_files, success = self.run_gcloud_command(["gsutil", "ls", "-r", pattern])
+                if success and all_files:
+                    print(f"    Found {len(all_files.split('\n'))} total files with pattern {pattern}")
+                    # Print first few files for debugging
+                    for file in all_files.split('\n')[:5]:
+                        if file:
+                            print(f"    Sample file: {file}")
+                else:
+                    print(f"    No files found with pattern {pattern} or error occurred")
         except Exception as e:
             print(f"    Error listing files: {str(e)}")
 
@@ -117,9 +143,11 @@ class ArchiveFileFinder:
             try:
                 # Try different search patterns
                 patterns = [
-                    f"{bucket_url}**{ext}",  # Original pattern
-                    f"{bucket_url}*{ext}",   # Simple pattern
-                    f"{bucket_url}**/*{ext}" # Alternative pattern
+                    f"{bucket_url}**{ext}",    # Original pattern
+                    f"{bucket_url}*{ext}",     # Simple pattern
+                    f"{bucket_url}**/*{ext}",  # Alternative pattern
+                    f"{bucket_url}*/*{ext}",   # Another alternative
+                    f"{bucket_url}**/*.{ext}"  # Pattern with dot
                 ]
                 
                 for pattern in patterns:
